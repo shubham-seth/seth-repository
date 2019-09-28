@@ -1,0 +1,400 @@
+import numpy as np
+import matplotlib.pyplot as plt
+alpha=0.1
+
+def Convolve(Weights,Bias,pad,A):
+    (a,b,c,d)=A.shape
+    (p,q,r,s)=Weights.shape
+    temp=np.zeros((a,b,c+2*pad,d+2*pad))
+    temp[:,:,pad:c+pad,pad:d+pad]=A
+    Z=np.zeros((a,p,c,d))
+   
+    for i in range(a):
+        for j in range(p):
+            k=0
+            while((k+r)<=c+2*pad):
+                l=0
+                while((l+s)<=d+2*pad):
+                    K=Weights[j,:,:,:]*temp[i,:,k:k+r,l:l+s]
+                    Z[i,j,k,l]=np.sum(K)+Bias[j]
+                    l=l+1
+                k=k+1
+    return Z
+    
+    def MaxPool(Z,p,q):
+    (a,b,c,d)=Z.shape
+    A=np.zeros((a,b,int(c/p),int(d/q)))
+    
+    for i in range(a):
+        for j in range(b):
+            for k in range(int(c/p)):
+                for l in range(int(d/q)):
+                    A[i,j,k,l]=np.amax(Z[i, j, k*p:(k+1)*p, l*q:(l+1)*q])
+    return A
+    
+    def GradKey(Z,A):
+    p=int(np.size(Z,2)/np.size(A,2))
+    q=int(np.size(Z,3)/np.size(A,3))
+    key=np.zeros(Z.shape)
+    (a,b,c,d)=A.shape
+    for i in range(a):
+        for j in range(b):
+            for k in range(c):
+                for l in range(d):
+                    key[i,j, k*p:(k+1)*p, l*q:(l+1)*q]=(A[i,j,k,l]==Z[i,j, k*p:(k+1)*p, l*q:(l+1)*q])*1
+    return key
+    
+    def FullyConnect(Z):
+    (a,b,c,d)=Z.shape
+    A=np.zeros((b*c*d,a))
+    for i in range(a):
+        A[:,i]=np.reshape(Z[i,:,:,:],(b*c*d,))
+    return A
+    
+    def UnConnect(A,b,c,d):
+    (n,m)=A.shape
+    Z=np.zeros((m,b,c,d))
+    for i in range(m):
+        Z[i,:,:,:]=np.reshape(A[:,i],(b,c,d))
+    return Z
+    
+    def ReLU(X):
+    Z=(X>0)*X
+    return Z
+
+def ReLUGrad(X):
+    Z=(X>0)*1
+    return Z
+
+def sigmoid(X):
+    Z=1/(1+exp(-X))
+    return Z
+
+def sigmoidGrad(X):
+    Z=sigmoid(X)*(1-sigmoid(X))
+    return Z
+    
+def GradConvDW(dZ,A,pad):
+    (a,b,c,d)=A.shape
+    (p,q,r,s)=dZ.shape
+    temp=np.zeros((a,b,c+2*pad,d+2*pad))
+    temp[:,:,pad:c+pad,pad:d+pad]=A
+    dW=np.zeros((q,b,c+2*pad-r+1,d+2*pad-s+1))
+    
+    for i in range(a):
+        for j in range(q):
+            for k in range(b):
+                for l in range(c+2*pad-r+1):
+                    for m in range(d+2*pad-s+1):
+                        K=temp[i,k,l:l+r,m:m+s]*dZ[i,j,:,:]
+                        dW[j,k,l,m]+=np.sum(K)
+    dW/=a
+    return dW
+
+def GradConvDB(dZ):
+    (a,b,c,d)=dZ.shape
+    dB=np.zeros((b))
+    for i in range(a):
+        for j in range(b):
+            dB[j]=np.sum(dZ[i,j,:,:])
+    dB/=a
+    return dB
+
+def GradConvDA(Weights,dZ,pad):
+    (a,b,c,d)=dZ.shape
+    (p,q,r,s)=Weights.shape
+    W=np.flip(Weights,2)
+    W=np.flip(W,3)
+    temp=np.zeros((a,b,c+2*pad,d+2*pad))
+    temp[:,:,pad:c+pad,pad:d+pad]=dZ
+    dA=np.zeros((a,q,c,d))
+    
+    for i in range(a):
+        for j in range(q):
+            for k in range(c+2*pad-r+1):
+                for l in range(d+2*pad-s+1):
+                    K=temp[i,:,k:k+r,l:l+s]*W[:,j,:,:]
+                    dA[i,j,k,l]=np.sum(K)
+    return dA
+
+def GradConvDZ(Z,dA):
+    dZ=dA*ReLUGrad(Z)
+    return dZ
+
+def GradFCend(Weights,Bias,A,Y,A_prev):
+    (n,m)=A.shape
+    dZ_end=A-Y
+    dW=dZ_end.dot(A_prev.T)/m
+    dB=np.sum(dZ_end,axis=1,keepdims=True)/m
+    dA_prev=(Weights.T).dot(dZ_end)
+    return dW, dB, dZ_end, dA_prev
+    
+    
+def GradFC(Weights,Bias,A,dA,Z,A_prev):
+    (n,m)=A.shape
+    dZ_curr=dA*ReLUGrad(Z)
+    dW=dZ_curr.dot(A_prev.T)/m
+    dB=np.sum(dZ_curr,axis=1,keepdims=True)/m
+    dA_prev=(Weights.T).dot(dZ_curr)
+    return dW, dB, dZ_curr, dA_prev
+    
+    
+def GradPool(key,dZ,p,q):
+    (a,b,c,d)=dZ.shape
+    dA=np.ones((key.shape))
+    for k in range(a):
+        for l in range(b):
+            for i in range(c):
+                for j in range(d):
+                    dA[k,l, i*p:(i+1)*p, j*q: (j+1)*q]*=dZ[k,l,i,j]
+    dA*=key
+    return dA
+
+def GradConvolve(A,Weights,Z,dZ,pad):
+    dW=GradConvDW(dZ,A,pad)
+    dB=GradConvDB(dZ)
+    dA=GradConvDA(Weights,dZ,pad)
+    return dW, dB, dA
+    
+def Loss(A,Y):
+    (n,m)=A.shape
+    LOSS=-(Y*log(A+1e-5)+(1-Y)*log(1-A+1e-5))
+    Loss=LOSS.sum/m
+    return Loss
+    
+def Update(learning_rate,Z,dZ):
+    for i in range(len(Z)):
+        Z-=(learning_rate*dZ)
+        
+        
+class Network:
+   
+    def __init__(self,data,y,num_labels):
+        self.Weights=[]
+        self.Bias=[]
+        self.Z=[]
+        self.A=[]
+        self.dA=[0]
+        self.dZ=[]
+        self.dW=[]
+        self.dB=[]
+        self.Loss=0
+        self.TypeOfLayer=[]
+        self.shape_before=0
+        self.Z.append(data)
+        self.A.append(data)
+        (a,b,c,d)=data.shape
+        Y=np.zeros((num_labels,a))
+        for i in range(a):
+            Y[y[i],i]=1
+        self.Y=Y
+        
+        
+    def Forward(self,TypeOfLayer,Weights=0,Bias=0,p=0,q=0,pad=0):
+        
+        if(TypeOfLayer=='Convolve'):
+            Z=Convolve(Weights,Bias,pad,self.A[-1])
+            A=ReLU(Z)
+            self.Weights.append(Weights)
+            self.Bias.append(Bias)
+            self.TypeOfLayer.append('Convolve')
+            
+        elif(TypeOfLayer=='MaxPool'):
+            Z=self.A[-1]
+            A=MaxPool(Z,p,q)
+            self.TypeOfLayer.append('Pool')
+        
+        elif(TypeOfLayer=='FullyConnect'):
+            Z=self.A[-1]
+            A=FullyConnect(Z)
+            self.shape_before=self.A[-1].shape
+            self.TypeOfLayer.append('FullyConnect')
+            
+        elif(TypeOfLayer=='NewConnect'):
+            Z=Weights.dot(self.A[-1])+Bias
+            A=ReLU(Z)
+            self.Weights.append(Weights)
+            self.Bias.append(Bias)
+            self.TypeOfLayer.append('NewConnect')
+        
+        elif(TypeOfLayer=='EndConnect'):
+            Z=Weights.dot(self.A[-1])+Bias
+            A=sigmoid(Z)
+            self.Weights.append(Weights)
+            self.Bias.append(Bias)
+            self.TypeOfLayer.append('EndConnect')
+            self.Loss=Loss(A,Y)
+        
+        self.Z.append(Z)
+        self.A.append(A)
+        
+    
+    
+    def BackProp(self,pad=0):
+        t=len(self.TypeOfLayer)
+        
+        for i in range(l):
+            
+            if(self.TypeOfLayer[-1]=='EndConnect'):
+                (dW,dB,dZ,dA)=GradFCend(self.Weights[-1],self.Bias[-1],self.A[-1],self.Y,self.A[-2])
+                self.dW.insert(0,dW)
+                self.dB.insert(0,dB)
+                del self.Weights[-1]
+                del self.Bias[-1]
+                    
+            elif(self.TypeOfLayer[-1]=='NewConnect'):
+                (dW,dB,dZ,dA)=GradFC(self.Weights[-1],self.Bias[-1],self.A[-1],self.dA[0],self.Z[-1],self.A[-2])
+                self.dW.insert(0,dW)
+                self.dB.insert(0,dB)
+                del self.Weights[-1]
+                del self.Bias[-1]
+                
+            elif(self.TypeOfLayer[-1]=='FullyConnect'):
+                (a,b,c,d)=self.shape_before
+                dZ=UnConnect(self.dA[0],b,c,d)
+                dA=dZ
+                
+            elif(self.TypeOfLayer[-1]=='MaxPool'):
+                key=GradKey(self.Z[-1],self.A[-1])
+                p=int(size(self.Z[-1],2)/size(self.A[-1],2))
+                q=int(size(self.Z[-1],3)/size(self.A[-1],3))
+                dZ=GradPool(key,self.dA[-1],p,q)
+                dA=dZ
+                
+            elif(self.TypeOfLayer[-1]=='Convolve'):
+                dZ=dA*ReLUGrad(self.Z[-1])
+                (dW,dB,dA)=GradConvolve(self.A[-2],self.Weights[-1],self.Z[-1],dZ,pad)
+                self.dW.insert(0,dW)
+                self.dB.insert(0,dB)
+                del self.Weights[-1]
+                del self.Bias[-1]
+                
+            self.dZ.insert(0,dZ)
+            self.dA.insert(0,dA)
+            del self.Z[-1]
+            del self.A[-1]
+            del self.TypeOfLayer[-1]
+        
+        return self.dW, self.dB
+        
+        
+def unpickle(file):
+    import pickle
+    with open(file, 'rb') as fo:
+        dict = pickle.load(fo, encoding='latin-1')
+    return dict
+    
+def FeatureNormalize(X):
+    (a,b,c,d)=X.shape
+    mean=np.mean(X,axis=0)
+    std=np.std(X,axis=0)
+    np.add(X, -mean, out=X, casting="unsafe")
+    np.divide(X, std, out=X, casting="unsafe")
+    return mean, std
+    
+def Normalize(X,mean,std):
+    np.add(X, -mean, out=X, casting="unsafe")
+    np.divide(X, std, out=X, casting="unsafe")
+    
+def load_cifar10_data(data_dir):
+    train_data = None
+    train_labels = []
+    for i in range(1, 6):
+        data_dic = unpickle(data_dir + "/data_batch_{}".format(i))
+        if i == 1:
+            train_data = data_dic['data']
+        elif i==5:
+            cv_data = data_dic['data']
+        else:
+            train_data = np.vstack((train_data, data_dic['data']))
+        
+        if i!=5:
+            train_labels += data_dic['labels']
+        else:
+            cv_labels = data_dic['labels']
+
+    test_data_dic = unpickle(data_dir + "/test_batch")
+    test_data = test_data_dic['data']
+    test_labels = test_data_dic['labels']
+
+    train_data = train_data.reshape((len(train_data), 3, 32, 32))
+    # train_data = np.rollaxis(train_data, 1, 4)
+    train_labels = np.array(train_labels)
+    
+    cv_data = cv_data.reshape((len(cv_data), 3, 32, 32))
+    cv_labels = np.array(cv_labels)
+
+    test_data = test_data.reshape((len(test_data), 3, 32, 32))
+    test_labels = np.array(test_labels)
+    return train_data, train_labels, cv_data, cv_labels, test_data, test_labels
+
+
+data_dir = 'cifar-10-batches-py'
+train_data, train_labels, cv_data, cv_labels, test_data, test_labels = load_cifar10_data(data_dir)
+
+Weights=[]
+Weights.append(np.random.rand(4,3,3,3))
+Weights.append(np.random.rand(8,4,3,3))
+Weights.append(np.random.rand(16,8,3,3))
+Weights.append(np.random.rand(32,16,3,3))
+Weights.append(np.random.rand(64,32,3,3))
+Weights.append(np.random.rand(128,64,3,3))
+Weights.append(np.random.rand(256,128,3,3))
+Weights.append(np.random.rand(400,4096))
+Weights.append(np.random.rand(10,400))
+
+Bias=[]
+Bias.append(np.random.rand(4))
+Bias.append(np.random.rand(8))
+Bias.append(np.random.rand(16))
+Bias.append(np.random.rand(32))
+Bias.append(np.random.rand(64))
+Bias.append(np.random.rand(128))
+Bias.append(np.random.rand(256))
+Bias.append(np.random.rand(400))
+Bias.append(np.random.rand(10))
+
+for i in range(1500):
+    Model=Network(train_data,train_labels,10)
+    Model.Forward('Convolve',Weights[0],Bias=Bias[0],pad=1)
+    Model.Forward('Convolve',Weights[1],Bias[1],pad=1)
+    Model.Forward('MaxPool',p=2,q=2)
+    Model.Forward('Convolve',Weights[2],Bias[2],pad=1)
+    Model.Forward('Convolve',Weights[3],Bias[3],pad=1)
+    Model.Forward('Convolve',Weights[4],Bias[4],pad=1)
+    Model.Forward('MaxPool',p=2,q=2)
+    Model.Forward('Convolve',Weights[5],Bias[5],pad=1)
+    Model.Forward('Convolve',Weights[6],Bias[6],pad=1)
+    Model.Forward('MaxPool',p=2,q=2)
+    Model.Forward('FullyConnect')
+    Model.Forward('NewConnect',Weights[7],Bias[7])
+    Model.Forward('EndConnect',Weights[8],Bias[8])
+    print(Model.Loss)
+    (dW,dB)=Model.Backprop
+    Update(alpha,W,dW)
+    Update(alpha,B,dB)
+    del Model
+    
+for i in range(1500):
+    Model=Network(train_data,train_labels,10)
+    Model.Forward('Convolve',Weights[0],Bias=Bias[0],pad=1)
+    Model.Forward('Convolve',Weights[1],Bias[1],pad=1)
+    Model.Forward('MaxPool',p=2,q=2)
+    Model.Forward('Convolve',Weights[2],Bias[2],pad=1)
+    Model.Forward('Convolve',Weights[3],Bias[3],pad=1)
+    Model.Forward('Convolve',Weights[4],Bias[4],pad=1)
+    Model.Forward('MaxPool',p=2,q=2)
+    Model.Forward('Convolve',Weights[5],Bias[5],pad=1)
+    Model.Forward('Convolve',Weights[6],Bias[6],pad=1)
+    Model.Forward('MaxPool',p=2,q=2)
+    Model.Forward('FullyConnect')
+    Model.Forward('NewConnect',Weights[7],Bias[7])
+    Model.Forward('EndConnect',Weights[8],Bias[8])
+    print(Model.Loss)
+    (dW,dB)=Model.Backprop
+    Update(alpha,W,dW)
+    Update(alpha,B,dB)
+    del Model
+    
+accuracy=Pred(cv_data,cv_labels,Weights,Bias)
+print(accuracy)
